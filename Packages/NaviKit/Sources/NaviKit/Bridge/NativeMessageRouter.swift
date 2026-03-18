@@ -39,9 +39,15 @@ private extension NativeMessageRouter {
             return try await .run(BrowserAgentCoordinator.shared.submitToolResult(runID: runID, callID: callID, result: result))
 
         case .checkForUpdates:
-            await openContainingApp()
+            await requestCheckForUpdates()
             return .ok
         }
+    }
+
+    static func requestCheckForUpdates() async {
+        UpdateRequestBridge.markPendingCheckForUpdates()
+        DistributedNotificationCenter.default().post(name: UpdateRequestBridge.notificationName, object: nil)
+        await openContainingApp()
     }
 
     static func openContainingApp() async {

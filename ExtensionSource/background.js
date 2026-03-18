@@ -401,10 +401,23 @@ function checkForAppUpdate() {
     fetch(APPCAST_URL)
         .then((r) => r.text())
         .then((xml) => {
-            const match = xml.match(/sparkle:shortVersionString="([^"]+)"/);
-            if (!match) return;
-            const latest = match[1];
-            cachedUpdateAvailable = compareVersions(latest, currentVersion) > 0;
+            const matches = [...xml.matchAll(/sparkle:shortVersionString="([^"]+)"/g)];
+            if (matches.length === 0) return;
+
+            const latest = matches
+                .map((match) => match[1])
+                .sort(compareVersions)
+                .at(-1);
+
+            if (!latest) return;
+
+            const nextValue = compareVersions(latest, currentVersion) > 0;
+            if (nextValue === cachedUpdateAvailable) return;
+
+            cachedUpdateAvailable = nextValue;
+            for (const tabId of tabState.keys()) {
+                broadcastState(tabId);
+            }
         })
         .catch(() => {});
 }

@@ -8,6 +8,18 @@ import SwiftUI
 // MARK: - NaviApp
 
 @main struct NaviApp: App {
+    // MARK: Lifecycle
+
+    init() {
+        let updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
+        self.updaterController = updaterController
+        _updateRequestHandler = State(initialValue: UpdateRequestHandler(updater: updaterController.updater))
+    }
+
     // MARK: Internal
 
     var body: some Scene {
@@ -16,6 +28,9 @@ import SwiftUI
                 authController: authController,
                 extensionController: extensionController
             )
+            .task {
+                await updateRequestHandler.start()
+            }
         }
         .defaultSize(width: 440, height: 560)
         .commands {
@@ -32,12 +47,9 @@ import SwiftUI
     }
 
     @State private var extensionController = SafariExtensionStatusController()
+    @State private var updateRequestHandler: UpdateRequestHandler
 
-    private let updaterController = SPUStandardUpdaterController(
-        startingUpdater: true,
-        updaterDelegate: nil,
-        userDriverDelegate: nil
-    )
+    private let updaterController: SPUStandardUpdaterController
 }
 
 // MARK: - CheckForUpdatesView
@@ -82,4 +94,44 @@ private struct CheckForUpdatesView: View {
     // MARK: Private
 
     private var cancellable: AnyCancellable?
+}
+
+// MARK: - UpdateRequestHandler
+
+@MainActor @Observable private final class UpdateRequestHandler {
+    // MARK: Lifecycle
+
+    init(updater: SPUUpdater) {
+        self.updater = updater
+    }
+
+    // MARK: Internal
+
+    func start() async {
+        guard !started else { return }
+        started = true
+
+        observer = DistributedNotificationCenter.default().addObserver(
+            forName: UpdateRequestBridge.notificationName,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.runIfRequested()
+            }
+        }
+
+        runIfRequested()
+    }
+
+    // MARK: Private
+
+    private let updater: SPUUpdater
+    private var started = false
+    private var observer: NSObjectProtocol?
+
+    private func runIfRequested() {
+        guard UpdateRequestBridge.consumePendingCheckForUpdates() else { return }
+        updater.checkForUpdates()
+    }
 }
