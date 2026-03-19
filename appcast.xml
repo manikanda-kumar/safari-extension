@@ -65,5 +65,17 @@
         type="application/octet-stream"
       />
     </item>
+    <item>
+      <title>Version 0.1.5</title>
+      <pubDate>Thu, 19 Mar 2026 17:38:42 +0000</pubDate>
+      <enclosure
+        url="https://github.com/finnvoor/Navi/releases/download/v0.1.5/Navi.zip"
+        sparkle:version="19"
+        sparkle:shortVersionString="0.1.5"
+        sparkle:edSignature="asLcSc5GlmwtQjI0Ns/1LypsiPCt+QFufpP4lLDN6SOqbcvllhScl/9xzTieth6uiAqpnwzDnCvQ1BgzaZp6Cw=="
+        length="4369313"
+        type="application/octet-stream"
+      />
+    </item>
   </channel>
 </rss>
