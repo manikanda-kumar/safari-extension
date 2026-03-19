@@ -8,6 +8,9 @@ enum NativeBridgeRequest: Sendable {
     case getRun(runID: String)
     case cancelRun(runID: String)
     case submitToolResult(runID: String, callID: String, result: BrowserToolResult)
+    case loadThread(threadKey: String)
+    case saveThread(threadKey: String, snapshot: [String: JSONValue])
+    case clearThread(threadKey: String)
     case checkForUpdates
 
     // MARK: Lifecycle
@@ -20,6 +23,15 @@ enum NativeBridgeRequest: Sendable {
             self = .loadServiceState
         case "checkForUpdates":
             self = .checkForUpdates
+        case "loadThread":
+            self = try .loadThread(threadKey: NativeBridgeCodec.requiredString("threadKey", in: message))
+        case "saveThread":
+            self = try .saveThread(
+                threadKey: NativeBridgeCodec.requiredString("threadKey", in: message),
+                snapshot: NativeBridgeCodec.decode([String: JSONValue].self, forKey: "snapshot", in: message)
+            )
+        case "clearThread":
+            self = try .clearThread(threadKey: NativeBridgeCodec.requiredString("threadKey", in: message))
         case "startRun":
             self = try .startRun(
                 prompt: NativeBridgeCodec.requiredString("prompt", in: message),
@@ -46,6 +58,7 @@ enum NativeBridgeRequest: Sendable {
 enum NativeBridgeResponse: Sendable {
     case serviceState(AssistantServiceSnapshot)
     case run(NativeRunSnapshot)
+    case thread([String: JSONValue]?)
     case ok
 
     // MARK: Internal
@@ -56,6 +69,8 @@ enum NativeBridgeResponse: Sendable {
             try NativeBridgeCodec.successPayload(["serviceState": NativeBridgeCodec.dictionary(from: snapshot)])
         case let .run(run):
             try NativeBridgeCodec.successPayload(["run": NativeBridgeCodec.dictionary(from: run)])
+        case let .thread(snapshot):
+            try NativeBridgeCodec.successPayload(["thread": snapshot?.mapValues(\.anyValue) as Any])
         case .ok:
             try NativeBridgeCodec.successPayload()
         }

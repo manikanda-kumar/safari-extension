@@ -38,6 +38,17 @@ private extension NativeMessageRouter {
         case let .submitToolResult(runID, callID, result):
             return try await .run(BrowserAgentCoordinator.shared.submitToolResult(runID: runID, callID: callID, result: result))
 
+        case let .loadThread(threadKey):
+            return await .thread(BrowserAgentCoordinator.shared.loadThread(threadKey: threadKey))
+
+        case let .saveThread(threadKey, snapshot):
+            await BrowserAgentCoordinator.shared.saveThread(threadKey: threadKey, snapshot: snapshot)
+            return .ok
+
+        case let .clearThread(threadKey):
+            await BrowserAgentCoordinator.shared.clearThread(threadKey: threadKey)
+            return .ok
+
         case .checkForUpdates:
             await requestCheckForUpdates()
             return .ok

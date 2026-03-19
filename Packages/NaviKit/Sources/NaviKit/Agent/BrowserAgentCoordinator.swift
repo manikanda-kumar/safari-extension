@@ -8,11 +8,13 @@ actor BrowserAgentCoordinator {
     init(
         serviceStore: AssistantServiceStore = AssistantServiceStore(),
         transcriptLogger: TranscriptLogger = .shared,
-        sessionStore: RunStore = RunStore()
+        sessionStore: RunStore = RunStore(),
+        threadStore: BrowserThreadStore = .shared
     ) {
         self.serviceStore = serviceStore
         self.transcriptLogger = transcriptLogger
         self.sessionStore = sessionStore
+        self.threadStore = threadStore
     }
 
     // MARK: Internal
@@ -110,11 +112,24 @@ actor BrowserAgentCoordinator {
         return try await sessionStore.submitToolResult(runID: runID, callID: callID, result: result)
     }
 
+    func loadThread(threadKey: String) async -> [String: JSONValue]? {
+        await threadStore.load(threadKey: threadKey)
+    }
+
+    func saveThread(threadKey: String, snapshot: [String: JSONValue]) async {
+        await threadStore.save(threadKey: threadKey, snapshot: snapshot)
+    }
+
+    func clearThread(threadKey: String) async {
+        await threadStore.clear(threadKey: threadKey)
+    }
+
     // MARK: Private
 
     private let serviceStore: AssistantServiceStore
     private let transcriptLogger: TranscriptLogger
     private let sessionStore: RunStore
+    private let threadStore: BrowserThreadStore
 }
 
 private extension BrowserAgentCoordinator {

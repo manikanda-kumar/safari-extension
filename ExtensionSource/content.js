@@ -1,10 +1,14 @@
 const NAVI_ATTRIBUTE = "data-navi-id";
+const THREAD_KEY_PREFIX = "__navi_thread_key__:";
 let nextElementID = 1;
 
 browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     switch (message?.type) {
         case "navi:getSnapshot":
             sendResponse(buildSnapshot());
+            return true;
+        case "navi:getThreadKey":
+            sendResponse(getThreadKey());
             return true;
         case "navi:performAction":
             sendResponse(executeAction(message.action));
@@ -41,6 +45,22 @@ function buildSnapshot() {
             interactives: []
         };
     }
+}
+
+function getThreadKey() {
+    const existingTokens = String(window.name || "")
+        .split(/\s+/)
+        .filter(Boolean);
+
+    const existingKey = existingTokens.find((token) => token.startsWith(THREAD_KEY_PREFIX));
+    if (existingKey) {
+        return existingKey;
+    }
+
+    const suffix = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const key = `${THREAD_KEY_PREFIX}${suffix}`;
+    window.name = existingTokens.length > 0 ? `${window.name} ${key}`.trim() : key;
+    return key;
 }
 
 function collectInteractiveElements() {

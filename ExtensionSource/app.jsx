@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AssistantRuntimeProvider, useLocalRuntime } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, useExternalStoreRuntime } from "@assistant-ui/react";
 import { Thread } from "./components/assistant-ui/thread.jsx";
-import { Button } from "./components/ui/button.jsx";
 import { TooltipIconButton } from "./components/assistant-ui/tooltip-icon-button.jsx";
 import { TooltipProvider } from "./components/ui/tooltip.jsx";
 import { Sparkles, PlusBubble } from "./components/icons.jsx";
@@ -105,14 +104,13 @@ export function SidebarApp({ tabId: propTabId, pageTitle: propTitle, pageURL: pr
 
         void (async () => {
             try {
-                const tabId = propTabId;
-                if (!tabId) {
+                if (!propTabId) {
                     throw new Error("No tab ID was provided.");
                 }
 
                 const response = await browser.runtime.sendMessage({
                     type: "app:init",
-                    tabId
+                    tabId: propTabId
                 });
 
                 if (!response?.ok) {
@@ -123,7 +121,7 @@ export function SidebarApp({ tabId: propTabId, pageTitle: propTitle, pageURL: pr
                     setReadyState({
                         status: "ready",
                         error: "",
-                        tabId,
+                        tabId: propTabId,
                         pageTitle: String(propTitle || hostnameFromURL(propURL) || "Current tab"),
                         pageURL: String(propURL || ""),
                         initialState: response.state
@@ -280,10 +278,11 @@ function ChatWorkspace({ initialState, pageTitle, pageURL, tabId }) {
                     {serviceOK ? (
                         <ChatRuntimePanel
                             key={`thread-${tabId}-${threadSeed}`}
-                            initialState={extensionState}
+                            extensionState={extensionState}
                             pageTitle={pageTitle}
                             suggestions={suggestions}
                             tabId={tabId}
+                            onStateChange={setExtensionState}
                         />
                     ) : (
                         <StateCard
@@ -300,35 +299,45 @@ function ChatWorkspace({ initialState, pageTitle, pageURL, tabId }) {
     );
 }
 
-function ChatRuntimePanel({ initialState, pageTitle, suggestions, tabId }) {
-    const chatModel = useMemo(() => createNaviChatModel(tabId), [tabId]);
-    const suggestionAdapter = useMemo(
+function ChatRuntimePanel({ extensionState, pageTitle, suggestions, tabId, onStateChange }) {
+    const store = useMemo(
         () => ({
-            async generate() {
-                return suggestions;
+            messages: extensionState?.messages ?? [],
+            isRunning: Boolean(extensionState?.isRunning),
+            suggestions,
+            unstable_capabilities: {
+                copy: true
+            },
+            onNew: async (message) => {
+                const response = await browser.runtime.sendMessage({
+                    type: "assistant:append",
+                    tabId,
+                    message
+                });
+
+                if (!response?.ok) {
+                    throw new Error(response?.error ?? "Navi could not start the run.");
+                }
+
+                onStateChange(response.state);
+            },
+            onCancel: async () => {
+                const response = await browser.runtime.sendMessage({
+                    type: "assistant:stop",
+                    tabId
+                });
+
+                if (!response?.ok) {
+                    throw new Error(response?.error ?? "Navi could not stop the run.");
+                }
+
+                onStateChange(response.state);
             }
         }),
-        [suggestions]
+        [extensionState?.isRunning, extensionState?.messages, onStateChange, suggestions, tabId]
     );
 
-    const runtime = useLocalRuntime(chatModel, {
-        initialMessages: convertInitialMessages(initialState),
-        adapters: {
-            suggestion: suggestionAdapter
-        }
-    });
-
-    // If we mounted while a run is in progress (reconnection after navigation),
-    // trigger startRun so the chat model attaches to the existing background run.
-    useEffect(() => {
-        if (initialState?.isRunning) {
-            const lastMessage = initialState.messages?.at(-1);
-            const parentId = lastMessage
-                ? `seed-${initialState.messages.indexOf(lastMessage)}-${lastMessage.role}`
-                : null;
-            runtime.thread.startRun({ parentId });
-        }
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const runtime = useExternalStoreRuntime(store);
 
     return (
         <AssistantRuntimeProvider runtime={runtime}>
@@ -366,268 +375,6 @@ function buildStatusBanner(extensionState) {
     }
 
     return null;
-}
-
-function createNaviChatModel(tabId) {
-    return {
-        async *run({ abortSignal, messages }) {
-            const stateStream = createStateStream(tabId);
-            let cancelled = false;
-
-            const handleAbort = () => {
-                cancelled = true;
-                void browser.runtime.sendMessage({ type: "assistant:stop", tabId }).catch(() => {});
-            };
-
-            abortSignal.addEventListener("abort", handleAbort, { once: true });
-
-            try {
-                // Check if there's already a run in progress (reconnection after navigation)
-                const currentState = await browser.runtime.sendMessage({ type: "app:init", tabId });
-
-                if (currentState?.ok && currentState.state?.isRunning) {
-                    stateStream.push(currentState.state);
-                    const content = mapContentParts(currentState.state.contentParts);
-                    if (content.length > 0) {
-                        yield { content };
-                    }
-                    yield { status: { type: "running" } };
-                } else {
-                    const request = buildRunRequest(messages);
-                    if (!request) {
-                        throw new Error("Navi could not find a user message to send.");
-                    }
-
-                    const response = await browser.runtime.sendMessage({
-                        type: "assistant:run",
-                        tabId,
-                        prompt: request.prompt,
-                        conversation: request.conversation
-                    });
-
-                    if (!response?.ok) {
-                        throw new Error(response?.error ?? "Navi could not start the run.");
-                    }
-
-                    stateStream.push(response.state);
-                    yield { status: { type: "running" } };
-                }
-
-                while (true) {
-                    const state = await stateStream.next();
-                    if (!state) break;
-
-                    if (state.error) {
-                        throw new Error(state.error);
-                    }
-
-                    const content = mapContentParts(state.contentParts);
-
-                    if (!state.isRunning) {
-                        if (content.length > 0) {
-                            yield { content };
-                        }
-                        yield {
-                            status: cancelled
-                                ? { type: "incomplete", reason: "cancelled" }
-                                : { type: "complete", reason: "stop" }
-                        };
-                        return;
-                    }
-
-                    if (content.length > 0) {
-                        yield { content };
-                    }
-                }
-
-                yield {
-                    status: cancelled
-                        ? { type: "incomplete", reason: "cancelled" }
-                        : {
-                              type: "incomplete",
-                              reason: "other",
-                              error: "The Navi run ended unexpectedly."
-                          }
-                };
-            } finally {
-                abortSignal.removeEventListener("abort", handleAbort);
-                stateStream.close();
-            }
-        }
-    };
-}
-
-function createStateStream(tabId) {
-    const queue = [];
-    let resolver = null;
-    let closed = false;
-
-    const handleMessage = (message) => {
-        if (closed || message?.type !== "assistant:state" || message.tabId !== tabId) {
-            return;
-        }
-
-        push(message.state);
-    };
-
-    browser.runtime.onMessage.addListener(handleMessage);
-
-    function push(state) {
-        if (closed) {
-            return;
-        }
-
-        if (resolver) {
-            const currentResolver = resolver;
-            resolver = null;
-            currentResolver(state);
-            return;
-        }
-
-        queue.push(state);
-    }
-
-    async function next() {
-        if (queue.length > 0) {
-            return queue.shift();
-        }
-
-        if (closed) {
-            return null;
-        }
-
-        return new Promise((resolve) => {
-            resolver = resolve;
-        });
-    }
-
-    function close() {
-        closed = true;
-        browser.runtime.onMessage.removeListener(handleMessage);
-        if (resolver) {
-            resolver(null);
-            resolver = null;
-        }
-    }
-
-    return {
-        push,
-        next,
-        close
-    };
-}
-
-function mapContentParts(parts) {
-    if (!parts || !Array.isArray(parts)) return [];
-    return parts
-        .map((part) => {
-            switch (part.type) {
-                case "reasoning":
-                    return { type: "reasoning", text: part.text ?? "" };
-                case "tool-call":
-                    return {
-                        type: "tool-call",
-                        toolCallId: part.id ?? "",
-                        toolName: part.name ?? "",
-                        ...(part.status === "complete"
-                            ? {
-                                  result: part.isError ? { error: part.result } : { summary: part.result },
-                                  argsText: ""
-                              }
-                            : { argsText: "" })
-                    };
-                case "text":
-                    return { type: "text", text: part.text ?? "" };
-                default:
-                    return null;
-            }
-        })
-        .filter(Boolean);
-}
-
-function convertInitialMessages(state) {
-    const msgs = (state?.messages ?? [])
-        .filter((message) => message?.role === "user" || message?.role === "assistant")
-        .map((message, index) => ({
-            id: `seed-${index}-${message.role}`,
-            role: message.role,
-            content: String(message.content ?? "")
-        }))
-        .filter((message) => message.content.trim().length > 0);
-
-    // If the last message is from the assistant and we have contentParts,
-    // replace it with the rich content (reasoning + tool calls + text)
-    const parts = state?.contentParts;
-    if (parts?.length > 0 && msgs.length > 0 && msgs[msgs.length - 1].role === "assistant") {
-        const richContent = mapContentParts(parts);
-        if (richContent.length > 0) {
-            msgs[msgs.length - 1] = {
-                ...msgs[msgs.length - 1],
-                content: richContent
-            };
-        }
-    }
-
-    return msgs;
-}
-
-function buildRunRequest(messages) {
-    const conversation = messages
-        .filter((message) => message?.role === "user" || message?.role === "assistant")
-        .map((message) => ({
-            role: message.role,
-            content: flattenMessageText(message)
-        }))
-        .filter((message) => message.content.length > 0);
-
-    const promptIndex = findLastUserIndex(conversation);
-    if (promptIndex < 0) {
-        return null;
-    }
-
-    return {
-        prompt: conversation[promptIndex].content,
-        conversation: conversation.slice(0, promptIndex)
-    };
-}
-
-function findLastUserIndex(messages) {
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-        if (messages[index]?.role === "user") {
-            return index;
-        }
-    }
-
-    return -1;
-}
-
-function flattenMessageText(message) {
-    if (!message) {
-        return "";
-    }
-
-    if (typeof message.content === "string") {
-        return message.content.trim();
-    }
-
-    if (!Array.isArray(message.content)) {
-        return "";
-    }
-
-    return message.content
-        .map((part) => {
-            if (part?.type === "text" || part?.type === "reasoning") {
-                return String(part.text ?? "");
-            }
-
-            if (part?.type === "tool-call") {
-                return "";
-            }
-
-            return "";
-        })
-        .join("\n")
-        .trim();
 }
 
 function hostnameFromURL(url) {

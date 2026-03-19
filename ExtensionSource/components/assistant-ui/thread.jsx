@@ -1,6 +1,7 @@
 import React from "react";
 import { MarkdownText } from "./markdown-text.jsx";
 import { Reasoning, ReasoningGroup } from "./reasoning.jsx";
+import { ToolGroup } from "./tool-group.jsx";
 import { ToolFallback } from "./tool-fallback.jsx";
 import { TooltipIconButton } from "./tooltip-icon-button.jsx";
 import { Button } from "../ui/button.jsx";
@@ -75,7 +76,7 @@ function ThreadWelcome({ title, subtitle }) {
                 </p>
             </div>
             <div className="grid w-full gap-2 pb-4 @md:grid-cols-2">
-                <ThreadPrimitive.Suggestions>{() => <ThreadSuggestionItem />}</ThreadPrimitive.Suggestions>
+                <ThreadPrimitive.Suggestions components={{ Suggestion: ThreadSuggestionItem }} />
             </div>
         </div>
     );
@@ -148,6 +149,7 @@ function AssistantMessage() {
                         Text: MarkdownText,
                         Reasoning: Reasoning,
                         ReasoningGroup: ReasoningGroup,
+                        ToolGroup: ToolGroup,
                         tools: { Fallback: ToolFallback }
                     }}
                 />

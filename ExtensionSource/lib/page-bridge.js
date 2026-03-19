@@ -8,6 +8,15 @@ export async function getPageSnapshot(tabId) {
     return snapshot;
 }
 
+export async function getTabThreadKey(tabId) {
+    const key = await sendTabMessage(tabId, { type: "navi:getThreadKey" });
+    if (typeof key !== "string" || key.length === 0) {
+        throw new Error("Navi could not resolve the tab thread key.");
+    }
+
+    return key;
+}
+
 export async function performPageAction(tabId, action) {
     if (action.kind === "navigate") {
         await browser.tabs.update(tabId, { url: action.url });

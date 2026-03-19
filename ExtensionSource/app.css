@@ -193,7 +193,6 @@
 
 @layer utilities {
     .shimmer {
-        position: relative;
         color: transparent;
         background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--color-foreground) 45%, transparent) 50%, transparent 100%);
         background-size: 200% 100%;

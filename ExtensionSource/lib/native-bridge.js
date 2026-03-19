@@ -5,6 +5,19 @@ export async function loadServiceState() {
     return response.serviceState;
 }
 
+export async function loadThread(threadKey) {
+    const response = await sendNative({ action: "loadThread", threadKey });
+    return response.thread ?? null;
+}
+
+export async function saveThread(threadKey, snapshot) {
+    await sendNative({ action: "saveThread", threadKey, snapshot });
+}
+
+export async function clearThread(threadKey) {
+    await sendNative({ action: "clearThread", threadKey });
+}
+
 export function createRun(prompt, conversation = []) {
     return sendNative({
         action: "startRun",

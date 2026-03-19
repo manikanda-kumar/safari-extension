@@ -8,7 +8,7 @@ import { cn } from "../../lib/utils.js";
 
 const ANIMATION_DURATION = 200;
 
-const reasoningVariants = cva("aui-reasoning-root mb-4 w-full", {
+const reasoningVariants = cva("aui-reasoning-root w-full", {
     variants: {
         variant: {
             outline: "rounded-lg border px-3 py-2",
@@ -162,7 +162,7 @@ const ReasoningGroupImpl = ({ children, startIndex, endIndex }) => {
     });
 
     return (
-        <ReasoningRoot defaultOpen={isReasoningStreaming}>
+        <ReasoningRoot defaultOpen={false}>
             <ReasoningTrigger active={isReasoningStreaming} />
             <ReasoningContent aria-busy={isReasoningStreaming}>
                 <ReasoningText>{children}</ReasoningText>

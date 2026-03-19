@@ -1,12 +1,24 @@
-import { cancelRun, createRun, fetchRun, loadServiceState, submitToolResult } from "./lib/native-bridge.js";
-import { getPageSnapshot, performPageAction } from "./lib/page-bridge.js";
+import {
+    cancelRun,
+    clearThread,
+    createRun,
+    fetchRun,
+    loadServiceState,
+    loadThread,
+    saveThread,
+    submitToolResult
+} from "./lib/native-bridge.js";
+import { getPageSnapshot, getTabThreadKey, performPageAction } from "./lib/page-bridge.js";
 
 const POLL_INTERVAL_MS = 400;
 const SIDEBAR_WIDTH = 420;
 const APPCAST_URL = "https://raw.githubusercontent.com/finnvoor/Navi/main/appcast.xml";
+const TAB_SESSION_PREFIX = "__navi_thread_key__:";
 
 const tabState = new Map();
 const sidebarTabs = new Set();
+const hydratedTabs = new Set();
+const activeRunLoops = new Set();
 
 let cachedUpdateAvailable = false;
 
@@ -33,7 +45,13 @@ browser.commands.onCommand.addListener(async (command) => {
 
 browser.tabs.onRemoved.addListener((tabId) => {
     sidebarTabs.delete(tabId);
+    const state = tabState.get(tabId);
     tabState.delete(tabId);
+    hydratedTabs.delete(tabId);
+    activeRunLoops.delete(tabId);
+    if (state?.threadKey) {
+        void clearThread(state.threadKey);
+    }
 });
 
 browser.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
@@ -58,8 +76,8 @@ browser.runtime.onMessage.addListener((message, sender) => {
             return initializeApp(message.tabId);
         case "assistant:newThread":
             return startNewThread(message.tabId);
-        case "assistant:run":
-            return runPrompt(message.tabId, message.prompt, message.conversation);
+        case "assistant:append":
+            return appendAndRun(message.tabId, message.message);
         case "assistant:stop":
             return stopRun(message.tabId);
         default:
@@ -72,10 +90,12 @@ async function initializeApp(tabId) {
         return { ok: false, error: "No active tab is available." };
     }
 
+    await hydrateState(tabId);
     const state = ensureState(tabId);
     await refreshServiceState(state);
+    ensureRunLoop(tabId);
     checkForAppUpdate();
-    return { ok: true, state: snapshotState(state) };
+    return { ok: true, state: await commitState(tabId) };
 }
 
 async function startNewThread(tabId) {
@@ -83,30 +103,24 @@ async function startNewThread(tabId) {
         return { ok: false, error: "No active tab is available." };
     }
 
+    await hydrateState(tabId);
     const state = ensureState(tabId);
     if (state.isRunning) {
         return { ok: false, error: "Wait for Navi to finish before starting a new thread." };
     }
 
-    state.runID = null;
-    state.statusText = "";
-    state.contentParts = [];
-    state.error = null;
-    state.pendingTool = null;
-    state.messages = [];
-    state.recentActions = [];
-    state.toolCallsInFlight.clear();
-    broadcastState(tabId);
-
-    return { ok: true, state: snapshotState(state) };
+    resetThreadState(state);
+    activeRunLoops.delete(tabId);
+    return { ok: true, state: await commitState(tabId) };
 }
 
-async function runPrompt(tabId, prompt, conversation = []) {
+async function appendAndRun(tabId, appendMessage) {
     const resolvedTabId = tabId ?? (await getActiveTabID());
     if (!resolvedTabId) {
         return { ok: false, error: "No active tab is available." };
     }
 
+    await hydrateState(resolvedTabId);
     const state = ensureState(resolvedTabId);
     if (state.isRunning) {
         return { ok: false, error: "Navi is already working." };
@@ -114,28 +128,33 @@ async function runPrompt(tabId, prompt, conversation = []) {
 
     await refreshServiceState(state);
     if (!state.serviceState.isAuthenticated) {
-        broadcastState(resolvedTabId);
-        return { ok: false, error: "Open the Navi app and sign in before starting Navi." };
+        return {
+            ok: false,
+            error: "Open the Navi app and sign in before starting Navi.",
+            state: await commitState(resolvedTabId)
+        };
     }
 
-    const promptText = String(prompt ?? "").trim();
+    const userMessage = normalizeUserAppendMessage(appendMessage);
+    const promptText = flattenThreadMessageText(userMessage);
     if (!promptText) {
         return { ok: false, error: "Navi needs a prompt." };
     }
 
-    const seededConversation = sanitizeConversation(conversation);
-    state.messages = [...seededConversation, { role: "user", content: promptText }];
-    state.recentActions = [];
-    state.pendingTool = null;
-    state.contentParts = [];
-    state.error = null;
-    state.statusText = "Starting Navi…";
-    state.isRunning = true;
-    state.toolCallsInFlight.clear();
-    broadcastState(resolvedTabId);
+    const assistantMessage = createAssistantMessage({
+        id: makeID("assistant"),
+        content: [],
+        status: { type: "running" }
+    });
 
-    void runAssistantLoop(resolvedTabId, promptText, seededConversation);
-    return { ok: true, state: snapshotState(state) };
+    state.messages = [...state.messages, userMessage, assistantMessage];
+    state.isRunning = true;
+    state.runID = null;
+    state.toolCallsInFlight.clear();
+    state.error = null;
+
+    ensureRunLoop(resolvedTabId, { startNew: true });
+    return { ok: true, state: await commitState(resolvedTabId) };
 }
 
 async function stopRun(tabId) {
@@ -143,50 +162,55 @@ async function stopRun(tabId) {
         return { ok: false, error: "No active tab is available." };
     }
 
+    await hydrateState(tabId);
     const state = ensureState(tabId);
     if (!state.isRunning || !state.runID) {
-        return { ok: true, state: snapshotState(state) };
+        return { ok: true, state: await commitState(tabId) };
     }
 
-    state.statusText = "Stopping…";
-    broadcastState(tabId);
+    updateAssistantMessage(state, (message) => ({
+        ...message,
+        status: { type: "incomplete", reason: "cancelled" }
+    }));
 
     try {
-        const response = await cancelRun(state.runID);
-        const runState = response.run;
-        applyRunSnapshot(state, runState);
-        if (state.partialAnswer) {
-            upsertAssistantMessage(state, state.partialAnswer);
-        }
-        if (!runState.isComplete) {
-            state.isRunning = false;
-            state.runID = null;
-            state.statusText = "";
-        }
-        broadcastState(tabId);
-        return { ok: true, state: snapshotState(state) };
+        await cancelRun(state.runID);
     } catch (error) {
-        return { ok: false, error: error.message };
+        state.error = error.message;
+    } finally {
+        state.isRunning = false;
+        state.runID = null;
+        state.toolCallsInFlight.clear();
     }
+
+    return { ok: true, state: await commitState(tabId) };
 }
 
-async function runAssistantLoop(tabId, prompt, conversation) {
+async function runAssistantLoop(tabId) {
+    await hydrateState(tabId);
     const state = ensureState(tabId);
 
     try {
-        const response = await createRun(prompt, conversation);
-        applyRunSnapshot(state, response.run);
-        state.service = { ok: true, message: "Connected." };
-        broadcastState(tabId);
+        if (!state.runID) {
+            const request = buildRunRequest(state.messages);
+            if (!request) {
+                throw new Error("Navi could not find a user message to send.");
+            }
+
+            const response = await createRun(request.prompt, request.conversation);
+            applyRunSnapshot(state, response.run);
+            state.service = { ok: true, message: "Connected." };
+            await commitState(tabId);
+        }
 
         while (state.isRunning && state.runID) {
-            const nextResponse = await fetchRun(state.runID);
-            const runState = nextResponse.run;
+            const response = await fetchRun(state.runID);
+            const runState = response.run;
             applyRunSnapshot(state, runState);
 
             if (runState.pendingTool && !state.toolCallsInFlight.has(runState.pendingTool.callID)) {
                 state.toolCallsInFlight.add(runState.pendingTool.callID);
-                void handleToolCall(tabId, state, runState.pendingTool);
+                void handleToolCall(tabId, runState.pendingTool);
             }
 
             if (runState.error) {
@@ -194,34 +218,59 @@ async function runAssistantLoop(tabId, prompt, conversation) {
             }
 
             if (runState.isComplete) {
-                if (state.partialAnswer) {
-                    upsertAssistantMessage(state, state.partialAnswer);
-                }
                 state.isRunning = false;
                 state.runID = null;
-                state.statusText = "";
-                state.pendingTool = null;
-                broadcastState(tabId);
+                updateAssistantMessage(state, (message) => ({
+                    ...message,
+                    status: { type: "complete", reason: "stop" }
+                }));
+                await commitState(tabId);
                 return;
             }
 
-            broadcastState(tabId);
+            await commitState(tabId);
             await delay(POLL_INTERVAL_MS);
         }
     } catch (error) {
         state.error = error.message;
-        upsertAssistantMessage(state, `I hit an error: ${error.message}`);
-    } finally {
         state.isRunning = false;
         state.runID = null;
-        state.pendingTool = null;
-        state.statusText = "";
+        updateAssistantMessage(state, (message) => ({
+            ...message,
+            content: ensureErrorContent(message.content, error.message),
+            status: { type: "incomplete", reason: "error", error: error.message }
+        }));
+        await commitState(tabId);
+    } finally {
+        activeRunLoops.delete(tabId);
+        state.isRunning = false;
+        state.runID = null;
         state.toolCallsInFlight.clear();
-        broadcastState(tabId);
+        await commitState(tabId);
     }
 }
 
-async function handleToolCall(tabId, state, pendingTool) {
+function ensureRunLoop(tabId, { startNew = false } = {}) {
+    if (activeRunLoops.has(tabId)) {
+        return;
+    }
+
+    const state = ensureState(tabId);
+    if (startNew) {
+        state.runID = null;
+    }
+
+    if (!state.isRunning) {
+        return;
+    }
+
+    activeRunLoops.add(tabId);
+    void runAssistantLoop(tabId);
+}
+
+async function handleToolCall(tabId, pendingTool) {
+    const state = ensureState(tabId);
+
     try {
         let result;
 
@@ -273,33 +322,19 @@ async function handleToolCall(tabId, state, pendingTool) {
                 break;
         }
 
-        state.recentActions.push({
-            callID: pendingTool.callID,
-            name: pendingTool.name,
-            input: pendingTool.input,
-            summary: result.summary || "Completed.",
-            error: result.error || null
-        });
-        state.recentActions = state.recentActions.slice(-20);
-
-        await submitToolResult(state.runID, pendingTool.callID, result);
+        if (state.runID) {
+            await submitToolResult(state.runID, pendingTool.callID, result);
+        }
     } catch (error) {
-        state.recentActions.push({
-            callID: pendingTool.callID,
-            name: pendingTool.name,
-            input: pendingTool.input,
-            summary: null,
-            error: error.message
-        });
-        state.recentActions = state.recentActions.slice(-20);
-
-        await submitToolResult(state.runID, pendingTool.callID, {
-            ok: false,
-            error: error.message
-        }).catch(() => {});
+        if (state.runID) {
+            await submitToolResult(state.runID, pendingTool.callID, {
+                ok: false,
+                error: error.message
+            }).catch(() => {});
+        }
     } finally {
         state.toolCallsInFlight.delete(pendingTool.callID);
-        broadcastState(tabId);
+        await commitState(tabId);
     }
 }
 
@@ -315,42 +350,184 @@ async function refreshServiceState(state) {
 function applyRunSnapshot(state, runState) {
     state.isRunning = !runState.isComplete;
     state.runID = runState.isComplete ? null : runState.runID;
-    state.statusText = runState.statusText || "";
     state.error = runState.error || null;
-    state.contentParts = runState.contentParts || [];
-    state.pendingTool = runState.pendingTool ?? null;
-    state.partialAnswer = extractTextFromParts(runState.contentParts);
+
+    updateAssistantMessage(state, (message) => ({
+        ...message,
+        content: convertRunParts(runState.contentParts),
+        status: runState.isComplete ? { type: "complete", reason: "stop" } : { type: "running" }
+    }));
 }
 
-function extractTextFromParts(parts) {
-    if (!parts) return "";
-    for (let i = parts.length - 1; i >= 0; i--) {
-        if (parts[i].type === "text" && parts[i].text) return parts[i].text;
-    }
-    return "";
-}
-
-function sanitizeConversation(conversation) {
-    return (conversation ?? [])
-        .filter((message) => message && (message.role === "user" || message.role === "assistant"))
+function buildRunRequest(messages) {
+    const conversation = messages
+        .filter((message) => message?.role === "user" || message?.role === "assistant")
         .map((message) => ({
             role: message.role,
-            content: String(message.content ?? "").trim()
+            content: flattenThreadMessageText(message)
         }))
         .filter((message) => message.content.length > 0);
+
+    const promptIndex = findLastUserIndex(conversation);
+    if (promptIndex < 0) {
+        return null;
+    }
+
+    return {
+        prompt: conversation[promptIndex].content,
+        conversation: conversation.slice(0, promptIndex)
+    };
 }
 
-function upsertAssistantMessage(state, content) {
-    const text = String(content ?? "").trim();
-    if (!text) return;
+function findLastUserIndex(messages) {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+        if (messages[index]?.role === "user") {
+            return index;
+        }
+    }
 
+    return -1;
+}
+
+function flattenThreadMessageText(message) {
+    if (!message?.content || !Array.isArray(message.content)) {
+        return "";
+    }
+
+    return message.content
+        .map((part) => {
+            if (part?.type === "text" || part?.type === "reasoning") {
+                return String(part.text ?? "");
+            }
+
+            return "";
+        })
+        .join("\n")
+        .trim();
+}
+
+function normalizeUserAppendMessage(message) {
+    const text = flattenAppendContent(message?.content);
+
+    return {
+        id: message?.id || makeID("user"),
+        role: "user",
+        createdAt: new Date(),
+        content: [{ type: "text", text }],
+        attachments: [],
+        metadata: {
+            custom: {}
+        }
+    };
+}
+
+function flattenAppendContent(content) {
+    if (typeof content === "string") {
+        return content.trim();
+    }
+
+    if (!Array.isArray(content)) {
+        return "";
+    }
+
+    return content
+        .map((part) => {
+            if (part?.type === "text") {
+                return String(part.text ?? "");
+            }
+
+            return "";
+        })
+        .join("\n")
+        .trim();
+}
+
+function createAssistantMessage({ id, content, status }) {
+    return {
+        id,
+        role: "assistant",
+        createdAt: new Date(),
+        content,
+        status,
+        metadata: {
+            unstable_state: null,
+            unstable_annotations: [],
+            unstable_data: [],
+            steps: [],
+            custom: {}
+        }
+    };
+}
+
+function updateAssistantMessage(state, updater) {
     const lastMessage = state.messages.at(-1);
     if (lastMessage?.role === "assistant") {
-        lastMessage.content = text;
+        state.messages[state.messages.length - 1] = updater(lastMessage);
         return;
     }
 
-    state.messages.push({ role: "assistant", content: text });
+    state.messages.push(
+        updater(
+            createAssistantMessage({
+                id: makeID("assistant"),
+                content: [],
+                status: { type: "running" }
+            })
+        )
+    );
+}
+
+function convertRunParts(parts) {
+    if (!Array.isArray(parts)) {
+        return [];
+    }
+
+    return parts
+        .map((part) => {
+            switch (part.type) {
+                case "reasoning":
+                    return { type: "reasoning", text: part.text ?? "" };
+                case "tool-call":
+                    return {
+                        type: "tool-call",
+                        toolCallId: part.id ?? makeID("tool"),
+                        toolName: part.name ?? "",
+                        args: part.input ?? {},
+                        argsText: formatArgsText(part.input),
+                        ...(part.status === "complete"
+                            ? {
+                                  result: part.result,
+                                  isError: Boolean(part.isError)
+                              }
+                            : {})
+                    };
+                case "text":
+                    return { type: "text", text: part.text ?? "" };
+                default:
+                    return null;
+            }
+        })
+        .filter(Boolean);
+}
+
+function formatArgsText(input) {
+    if (!input || typeof input !== "object") {
+        return "";
+    }
+
+    try {
+        return JSON.stringify(input, null, 2);
+    } catch {
+        return "";
+    }
+}
+
+function ensureErrorContent(content, errorMessage) {
+    if (Array.isArray(content) && content.length > 0) {
+        return content;
+    }
+
+    return [{ type: "text", text: `I hit an error: ${errorMessage}` }];
 }
 
 async function getActiveTabID() {
@@ -361,15 +538,11 @@ async function getActiveTabID() {
 function ensureState(tabId) {
     if (!tabState.has(tabId)) {
         tabState.set(tabId, {
+            threadKey: null,
+            messages: [],
             isRunning: false,
             runID: null,
-            statusText: "",
-            contentParts: [],
-            partialAnswer: "",
             error: null,
-            pendingTool: null,
-            messages: [],
-            recentActions: [],
             service: { ok: true, message: "Loading Navi settings…" },
             serviceState: { isAuthenticated: false },
             toolCallsInFlight: new Set()
@@ -379,27 +552,117 @@ function ensureState(tabId) {
     return tabState.get(tabId);
 }
 
+function resetThreadState(state) {
+    state.messages = [];
+    state.isRunning = false;
+    state.runID = null;
+    state.error = null;
+    state.toolCallsInFlight.clear();
+}
+
 function snapshotState(state) {
     return {
+        messages: state.messages,
         isRunning: state.isRunning,
         runID: state.runID,
-        statusText: state.statusText,
-        contentParts: state.contentParts,
         error: state.error,
-        pendingTool: state.pendingTool,
-        messages: state.messages,
-        recentActions: state.recentActions,
         service: state.service,
         serviceState: state.serviceState,
         updateAvailable: cachedUpdateAvailable
     };
 }
 
+async function hydrateState(tabId) {
+    if (hydratedTabs.has(tabId)) {
+        return ensureState(tabId);
+    }
+
+    hydratedTabs.add(tabId);
+
+    try {
+        const state = ensureState(tabId);
+        const threadKey = await resolveThreadKey(tabId);
+        state.threadKey = threadKey;
+        const snapshot = await loadThread(threadKey).catch(() => null);
+        if (!snapshot) {
+            return ensureState(tabId);
+        }
+
+        state.messages = deserializeMessages(snapshot.messages);
+        state.isRunning = Boolean(snapshot.isRunning);
+        state.runID = snapshot.runID ?? null;
+        state.error = snapshot.error ?? null;
+        state.service = snapshot.service ?? { ok: true, message: "Loading Navi settings…" };
+        state.serviceState = snapshot.serviceState ?? { isAuthenticated: false };
+        return state;
+    } catch {
+        return ensureState(tabId);
+    }
+}
+
+async function persistState(tabId) {
+    try {
+        const state = ensureState(tabId);
+        const threadKey = state.threadKey ?? (await resolveThreadKey(tabId));
+        const snapshot = {
+            messages: serializeMessages(state.messages),
+            isRunning: state.isRunning,
+            runID: state.runID,
+            error: state.error,
+            service: state.service,
+            serviceState: state.serviceState
+        };
+
+        await saveThread(threadKey, snapshot);
+    } catch {}
+}
+
+async function commitState(tabId) {
+    const state = ensureState(tabId);
+    const snapshot = snapshotState(state);
+    await persistState(tabId);
+    browser.runtime.sendMessage({ type: "assistant:state", tabId, state: snapshot }).catch(() => {});
+    return snapshot;
+}
+
+function serializeMessages(messages) {
+    return (messages ?? []).map((message) => ({
+        ...message,
+        createdAt: message.createdAt instanceof Date ? message.createdAt.toISOString() : message.createdAt
+    }));
+}
+
+function deserializeMessages(messages) {
+    return (messages ?? []).map((message) => ({
+        ...message,
+        createdAt: message?.createdAt ? new Date(message.createdAt) : new Date()
+    }));
+}
+
+function makeID(prefix) {
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function resolveThreadKey(tabId) {
+    const state = ensureState(tabId);
+    if (state.threadKey) {
+        return state.threadKey;
+    }
+
+    try {
+        state.threadKey = await getTabThreadKey(tabId);
+        return state.threadKey;
+    } catch {
+        state.threadKey = `${TAB_SESSION_PREFIX}${tabId}`;
+        return state.threadKey;
+    }
+}
+
 function checkForAppUpdate() {
     const currentVersion = browser.runtime.getManifest().version;
 
     fetch(APPCAST_URL)
-        .then((r) => r.text())
+        .then((response) => response.text())
         .then((xml) => {
             const matches = [...xml.matchAll(/sparkle:shortVersionString="([^"]+)"/g)];
             if (matches.length === 0) return;
@@ -416,7 +679,7 @@ function checkForAppUpdate() {
 
             cachedUpdateAvailable = nextValue;
             for (const tabId of tabState.keys()) {
-                broadcastState(tabId);
+                void commitState(tabId);
             }
         })
         .catch(() => {});
@@ -430,11 +693,6 @@ function compareVersions(a, b) {
         if (diff !== 0) return diff;
     }
     return 0;
-}
-
-function broadcastState(tabId) {
-    const message = { type: "assistant:state", tabId, state: snapshotState(ensureState(tabId)) };
-    browser.runtime.sendMessage(message).catch(() => {});
 }
 
 async function injectSidebar(tabId) {
@@ -453,7 +711,7 @@ async function openSidebar(tabId, { animate = true } = {}) {
     let shortcut = null;
     try {
         const commands = await browser.commands.getAll();
-        shortcut = commands.find((c) => c.name === "toggle-sidebar")?.shortcut || null;
+        shortcut = commands.find((command) => command.name === "toggle-sidebar")?.shortcut || null;
     } catch {}
 
     await browser.scripting.executeScript({
