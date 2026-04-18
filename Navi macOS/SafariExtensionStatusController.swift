@@ -2,7 +2,7 @@ import AppKit
 import Observation
 import SafariServices
 
-private let extensionBundleIdentifier = "com.finnvoorhees.Navi.Extension"
+private let extensionBundleIdentifier = "com.manik.Navi.Extension"
 
 // MARK: - SafariExtensionStatusController
 

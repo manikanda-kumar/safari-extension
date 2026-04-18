@@ -26,8 +26,8 @@ private extension NativeMessageRouter {
         case .loadServiceState:
             return try await .serviceState(BrowserAgentCoordinator.shared.loadServiceState())
 
-        case let .startRun(prompt, conversation):
-            return try await .run(BrowserAgentCoordinator.shared.startRun(prompt: prompt, conversation: conversation))
+        case let .startRun(prompt, conversation, mode):
+            return try await .run(BrowserAgentCoordinator.shared.startRun(prompt: prompt, conversation: conversation, mode: mode))
 
         case let .getRun(runID):
             return try await .run(BrowserAgentCoordinator.shared.getRun(runID: runID))
@@ -65,7 +65,7 @@ private extension NativeMessageRouter {
 
     static func openContainingApp() async {
         #if canImport(AppKit)
-        guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.finnvoorhees.Navi") else { return }
+        guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.manik.Navi") else { return }
         try? await NSWorkspace.shared.openApplication(at: appURL, configuration: .init())
         #endif
     }

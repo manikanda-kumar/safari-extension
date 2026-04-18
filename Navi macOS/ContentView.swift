@@ -59,8 +59,38 @@ struct ContentView: View {
                         text: authController.statusMessage
                     )
 
+                    if authController.provider == .vllm {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("vLLM base URL")
+                                .font(.subheadline.weight(.semibold))
+                            TextField("http://127.0.0.1:8000/v1", text: $authController.vllmBaseURL)
+                                .textFieldStyle(.roundedBorder)
+
+                            Text("API key")
+                                .font(.subheadline.weight(.semibold))
+                            SecureField("sk-local-or-your-token", text: $authController.vllmAPIKey)
+                                .textFieldStyle(.roundedBorder)
+
+                            Text("Model ID")
+                                .font(.subheadline.weight(.semibold))
+                            TextField("qwen3.6-35b", text: $authController.vllmModelID)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        .padding(16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .fill(Color(nsColor: .controlBackgroundColor))
+                        )
+                    }
+
                     HStack(spacing: 12) {
-                        Button(authController.isAuthenticated ? "Reconnect \(authController.provider.displayName)" : "Sign In with \(authController.provider.displayName)") {
+                        Button(
+                            authController.provider == .vllm
+                                ? "Save vLLM Settings"
+                                : (authController.isAuthenticated
+                                    ? "Reconnect \(authController.provider.displayName)"
+                                    : "Sign In with \(authController.provider.displayName)")
+                        ) {
                             Task { await authController.login() }
                         }
                         .buttonStyle(.borderedProminent)

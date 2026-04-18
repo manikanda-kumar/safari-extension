@@ -1,9 +1,9 @@
 import Foundation
 
 public enum UpdateRequestBridge {
-    public static let appGroupID = "group.com.finnvoorhees.Navi"
+    public static let appGroupID = "AQ5WW4KNGB.group.com.manik.Navi"
     public static let pendingCheckKey = "pendingSparkleCheckForUpdates"
-    public static let notificationName = Notification.Name("com.finnvoorhees.Navi.checkForUpdates")
+    public static let notificationName = Notification.Name("com.manik.Navi.checkForUpdates")
 
     public static func markPendingCheckForUpdates() {
         UserDefaults(suiteName: appGroupID)?.set(true, forKey: pendingCheckKey)

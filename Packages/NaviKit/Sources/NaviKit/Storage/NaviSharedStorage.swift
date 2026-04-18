@@ -6,8 +6,9 @@ import Valet
 enum NaviSharedStorage {
     // MARK: Internal
 
-    static let appGroupID = "group.com.finnvoorhees.Navi"
+    static let appGroupID = "AQ5WW4KNGB.group.com.manik.Navi"
     static let modelIDKey = "assistant.model_id"
+    static let vllmBaseURLKey = "assistant.vllm.base_url"
     static let defaultProvider = NaviProvider.anthropic
 
     static func selectedProvider() -> NaviProvider {
@@ -33,7 +34,7 @@ enum NaviSharedStorage {
     }
 
     static func credentialStorage() throws -> CredentialStorage {
-        guard let identifier = SharedGroupIdentifier(appIDPrefix: teamIDPrefix, nonEmptyGroup: "com.finnvoorhees.Navi") else {
+        guard let identifier = SharedGroupIdentifier(appIDPrefix: teamIDPrefix, nonEmptyGroup: "com.manik.Navi") else {
             throw NaviSharedStorageError.unavailable
         }
         return CredentialStorage(sharedAccessGroupIdentifier: identifier)
@@ -41,7 +42,7 @@ enum NaviSharedStorage {
 
     // MARK: Private
 
-    private static let teamIDPrefix = "YF6GMG9Q86"
+    private static let teamIDPrefix = "AQ5WW4KNGB"
 }
 
 // MARK: - NaviSharedStorageError

@@ -20,6 +20,10 @@ struct CredentialStorage {
         guard let accessToken = try? valet.string(forKey: key(provider, "access")),
               !accessToken.isEmpty else { return nil }
 
+        if provider == NaviProvider.vllm.oauthProviderID {
+            return accessToken
+        }
+
         let nowMs = Date().timeIntervalSince1970 * 1000
         let expires = (try? valet.string(forKey: key(provider, "expires"))).flatMap(Double.init) ?? 0
 
@@ -60,6 +64,10 @@ struct CredentialStorage {
         if let expiresAt {
             try? valet.setString(String(expiresAt), forKey: key(provider, "expires"))
         }
+    }
+
+    func directValue(for provider: String, field: String) throws -> String? {
+        try valet.string(forKey: key(provider, field))
     }
 
     func remove(_ provider: String) {

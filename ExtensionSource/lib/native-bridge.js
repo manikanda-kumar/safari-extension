@@ -1,4 +1,4 @@
-const NATIVE_APP_ID = "com.finnvoorhees.Navi";
+const NATIVE_APP_ID = "com.manik.Navi";
 
 export async function loadServiceState() {
     const response = await sendNative({ action: "loadServiceState" });
@@ -18,11 +18,12 @@ export async function clearThread(threadKey) {
     await sendNative({ action: "clearThread", threadKey });
 }
 
-export function createRun(prompt, conversation = []) {
+export function createRun(prompt, conversation = [], mode = "assistant") {
     return sendNative({
         action: "startRun",
         prompt,
-        conversation
+        conversation,
+        mode
     });
 }
 
@@ -51,13 +52,16 @@ export function submitToolResult(runID, callID, result) {
 
 export async function sendNative(payload) {
     const candidates = [
-        () => browser.runtime.sendNativeMessage(NATIVE_APP_ID, payload),
-        () => browser.runtime.sendNativeMessage(payload)
+        ["app", () => browser.runtime.sendNativeMessage(NATIVE_APP_ID, payload)],
+        // Some Safari builds appear to wire native messaging to the extension bundle ID.
+        ["extension", () => browser.runtime.sendNativeMessage(`${NATIVE_APP_ID}.Extension`, payload)],
+        // Legacy fallback for engines that infer the native target.
+        ["implicit", () => browser.runtime.sendNativeMessage(payload)]
     ];
 
-    let lastError = null;
+    const failures = [];
 
-    for (const candidate of candidates) {
+    for (const [name, candidate] of candidates) {
         try {
             const response = await candidate();
             if (!response?.ok) {
@@ -66,11 +70,13 @@ export async function sendNative(payload) {
 
             return response;
         } catch (error) {
-            lastError = error;
+            failures.push(`${name}: ${error?.message ?? String(error)}`);
         }
     }
 
     throw new Error(
-        lastError?.message ?? "Safari native messaging is unavailable. Run the Navi app and reopen the extension."
+        failures.length > 0
+            ? `Safari native messaging failed (${failures.join(" | ")}). Reopen Safari and Navi, then try again.`
+            : "Safari native messaging is unavailable. Run the Navi app and reopen the extension."
     );
 }

@@ -487,7 +487,7 @@
 				CODE_SIGN_ENTITLEMENTS = "$(TARGET_NAME)/Supporting Files/Navi.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = YF6GMG9Q86;
+				DEVELOPMENT_TEAM = AQ5WW4KNGB;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
@@ -515,7 +515,7 @@
 					"-framework",
 					SafariServices,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.finnvoorhees.Navi.Extension;
+				PRODUCT_BUNDLE_IDENTIFIER = com.manik.Navi.Extension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -532,7 +532,7 @@
 				CODE_SIGN_ENTITLEMENTS = "$(TARGET_NAME)/Supporting Files/Navi.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = YF6GMG9Q86;
+				DEVELOPMENT_TEAM = AQ5WW4KNGB;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
@@ -560,7 +560,7 @@
 					"-framework",
 					SafariServices,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.finnvoorhees.Navi.Extension;
+				PRODUCT_BUNDLE_IDENTIFIER = com.manik.Navi.Extension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -606,7 +606,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = YF6GMG9Q86;
+				DEVELOPMENT_TEAM = AQ5WW4KNGB;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -670,7 +670,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = YF6GMG9Q86;
+				DEVELOPMENT_TEAM = AQ5WW4KNGB;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -700,7 +700,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = YF6GMG9Q86;
+				DEVELOPMENT_TEAM = AQ5WW4KNGB;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
@@ -727,7 +727,7 @@
 					"-framework",
 					SafariServices,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.finnvoorhees.Navi;
+				PRODUCT_BUNDLE_IDENTIFIER = com.manik.Navi;
 				PRODUCT_NAME = Navi;
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -748,7 +748,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = YF6GMG9Q86;
+				DEVELOPMENT_TEAM = AQ5WW4KNGB;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
@@ -775,7 +775,7 @@
 					"-framework",
 					SafariServices,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.finnvoorhees.Navi;
+				PRODUCT_BUNDLE_IDENTIFIER = com.manik.Navi;
 				PRODUCT_NAME = Navi;
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -794,7 +794,7 @@
 				CODE_SIGN_ENTITLEMENTS = "$(TARGET_NAME)/Supporting Files/Navi.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
-				DEVELOPMENT_TEAM = YF6GMG9Q86;
+				DEVELOPMENT_TEAM = AQ5WW4KNGB;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "$(TARGET_NAME)/Supporting Files/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Navi iOS Extension";
@@ -809,7 +809,7 @@
 					"-framework",
 					SafariServices,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.finnvoorhees.Navi.Extension;
+				PRODUCT_BUNDLE_IDENTIFIER = com.manik.Navi.Extension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -830,7 +830,7 @@
 				CODE_SIGN_ENTITLEMENTS = "$(TARGET_NAME)/Supporting Files/Navi.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
-				DEVELOPMENT_TEAM = YF6GMG9Q86;
+				DEVELOPMENT_TEAM = AQ5WW4KNGB;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "$(TARGET_NAME)/Supporting Files/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Navi iOS Extension";
@@ -845,7 +845,7 @@
 					"-framework",
 					SafariServices,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.finnvoorhees.Navi.Extension;
+				PRODUCT_BUNDLE_IDENTIFIER = com.manik.Navi.Extension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -867,7 +867,7 @@
 				CODE_SIGN_ENTITLEMENTS = "$(TARGET_NAME)/Supporting Files/Navi.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
-				DEVELOPMENT_TEAM = YF6GMG9Q86;
+				DEVELOPMENT_TEAM = AQ5WW4KNGB;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Navi;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -882,7 +882,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.5;
-				PRODUCT_BUNDLE_IDENTIFIER = com.finnvoorhees.Navi;
+				PRODUCT_BUNDLE_IDENTIFIER = com.manik.Navi;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -904,7 +904,7 @@
 				CODE_SIGN_ENTITLEMENTS = "$(TARGET_NAME)/Supporting Files/Navi.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
-				DEVELOPMENT_TEAM = YF6GMG9Q86;
+				DEVELOPMENT_TEAM = AQ5WW4KNGB;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Navi;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -919,7 +919,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.5;
-				PRODUCT_BUNDLE_IDENTIFIER = com.finnvoorhees.Navi;
+				PRODUCT_BUNDLE_IDENTIFIER = com.manik.Navi;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

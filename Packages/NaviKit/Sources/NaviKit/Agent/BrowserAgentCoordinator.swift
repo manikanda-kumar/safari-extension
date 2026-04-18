@@ -25,7 +25,11 @@ actor BrowserAgentCoordinator {
         try serviceStore.loadSnapshot()
     }
 
-    func startRun(prompt: String, conversation: [NativeConversationMessage] = []) async throws -> NativeRunSnapshot {
+    func startRun(
+        prompt: String,
+        conversation: [NativeConversationMessage] = [],
+        mode: BrowserAgentMode = .assistant
+    ) async throws -> NativeRunSnapshot {
         await sessionStore.pruneCompletedRunsIfNeeded()
 
         let configuration = try await serviceStore.loadConfiguration()
@@ -60,10 +64,12 @@ actor BrowserAgentCoordinator {
             CodexProvider(apiKey: configuration.apiKey, accountID: configuration.accountID ?? "")
         case .anthropic:
             ClaudeProvider(apiKey: configuration.apiKey)
+        case .vllm:
+            VLLMProvider(apiKey: configuration.apiKey, baseURL: configuration.baseURL ?? "http://127.0.0.1:8000/v1")
         }
         let agentSession = LLMBrowserAgentSession(
             provider: provider,
-            systemPrompt: Self.systemPrompt,
+            systemPrompt: Self.systemPrompt(for: mode),
             conversation: conversation,
             tools: BrowserToolCatalog.definitions,
             toolExecutor: toolExecutor,
@@ -156,16 +162,34 @@ private extension BrowserAgentCoordinator {
         var error: String?
     }
 
-    static let systemPrompt = """
-    You are Navi, an AI assistant that can read and control the active Safari tab.
+    static func systemPrompt(for mode: BrowserAgentMode) -> String {
+        switch mode {
+        case .assistant:
+            """
+            You are Navi, an AI assistant that can read and control the active Safari tab.
 
-    Use the provided browser tools to inspect the page, click elements, type into fields, scroll, navigate, and wait.
-    When a request depends on page contents or controls, call read_page before answering unless the context is already current.
-    After actions that change the page, call read_page again before making claims about the new page state.
-    Refer to interactive elements by the IDs returned from read_page.
-    Do not take destructive or high-risk actions like purchases, account deletion, or form submission unless the user explicitly asked for that exact action.
-    Keep the final answer concise and describe what you learned or changed in the browser.
-    """
+            Use the provided browser tools to inspect the page, click elements, type into fields, scroll, navigate, and wait.
+            In assistant mode, prioritize answering from the current page context and URL.
+            Only perform navigation or input actions when explicitly requested or required to answer correctly.
+            When a request depends on page contents or controls, call read_page before answering unless the context is already current.
+            After actions that change the page, call read_page again before making claims about the new page state.
+            Refer to interactive elements by the IDs returned from read_page.
+            Do not take destructive or high-risk actions like purchases, account deletion, or irreversible form submission unless the user explicitly asked for that exact action.
+            Keep the final answer concise and describe what you learned or changed in the browser.
+            """
+        case .navigator:
+            """
+            You are Navi, a browser navigator assistant that can read and control the active Safari tab.
+
+            Use tools proactively to help users find where to do something on websites (for example, where to cancel a ticket).
+            Prefer this loop: read_page -> choose likely target -> click/scroll/navigate -> read_page again -> continue until the destination is found.
+            Explain progress briefly after each meaningful step and include the current page title/URL context in your answer.
+            Refer to interactive elements by the IDs returned from read_page.
+            Never execute destructive or high-risk actions (purchases, account deletion, irreversible form submits) unless the user explicitly asks.
+            Keep answers concise, actionable, and oriented around "where to click next".
+            """
+        }
+    }
 
     func handleAgentEvent(_ event: BrowserAgentSessionEvent, runID: String, session: any BrowserAgentSession) async {
         // Sync content parts from the session to the store on every event

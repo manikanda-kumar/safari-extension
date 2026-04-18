@@ -80,6 +80,8 @@ browser.runtime.onMessage.addListener((message, sender) => {
             return appendAndRun(message.tabId, message.message);
         case "assistant:stop":
             return stopRun(message.tabId);
+        case "assistant:setMode":
+            return setAgentMode(message.tabId, message.mode);
         default:
             return undefined;
     }
@@ -186,6 +188,22 @@ async function stopRun(tabId) {
     return { ok: true, state: await commitState(tabId) };
 }
 
+async function setAgentMode(tabId, mode) {
+    if (!tabId) {
+        return { ok: false, error: "No active tab is available." };
+    }
+
+    await hydrateState(tabId);
+    const state = ensureState(tabId);
+
+    if (state.isRunning) {
+        return { ok: false, error: "Wait for Navi to finish before switching modes." };
+    }
+
+    state.agentMode = mode === "navigator" ? "navigator" : "assistant";
+    return { ok: true, state: await commitState(tabId) };
+}
+
 async function runAssistantLoop(tabId) {
     await hydrateState(tabId);
     const state = ensureState(tabId);
@@ -197,7 +215,7 @@ async function runAssistantLoop(tabId) {
                 throw new Error("Navi could not find a user message to send.");
             }
 
-            const response = await createRun(request.prompt, request.conversation);
+            const response = await createRun(request.prompt, request.conversation, state.agentMode || "assistant");
             applyRunSnapshot(state, response.run);
             state.service = { ok: true, message: "Connected." };
             await commitState(tabId);
@@ -545,6 +563,7 @@ function ensureState(tabId) {
             error: null,
             service: { ok: true, message: "Loading Navi settings…" },
             serviceState: { isAuthenticated: false },
+            agentMode: "assistant",
             toolCallsInFlight: new Set()
         });
     }
@@ -568,6 +587,7 @@ function snapshotState(state) {
         error: state.error,
         service: state.service,
         serviceState: state.serviceState,
+        agentMode: state.agentMode || "assistant",
         updateAvailable: cachedUpdateAvailable
     };
 }
@@ -594,6 +614,7 @@ async function hydrateState(tabId) {
         state.error = snapshot.error ?? null;
         state.service = snapshot.service ?? { ok: true, message: "Loading Navi settings…" };
         state.serviceState = snapshot.serviceState ?? { isAuthenticated: false };
+        state.agentMode = snapshot.agentMode === "navigator" ? "navigator" : "assistant";
         return state;
     } catch {
         return ensureState(tabId);
@@ -610,7 +631,8 @@ async function persistState(tabId) {
             runID: state.runID,
             error: state.error,
             service: state.service,
-            serviceState: state.serviceState
+            serviceState: state.serviceState,
+            agentMode: state.agentMode || "assistant"
         };
 
         await saveThread(threadKey, snapshot);

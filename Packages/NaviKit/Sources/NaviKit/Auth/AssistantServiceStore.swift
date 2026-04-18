@@ -7,6 +7,7 @@ struct AssistantServiceConfiguration: Sendable {
     var modelID: String
     var apiKey: String
     var accountID: String?
+    var baseURL: String?
 }
 
 // MARK: - AssistantServiceStore
@@ -37,7 +38,14 @@ struct AssistantServiceStore {
 
         let storage = try NaviSharedStorage.credentialStorage()
         let accountID = storage.getExtra(provider.oauthProviderID, key: "accountID")
-        return AssistantServiceConfiguration(provider: provider, modelID: modelID, apiKey: trimmedCredential, accountID: accountID)
+        let baseURL = provider == .vllm ? storedVLLMBaseURL() : nil
+        return AssistantServiceConfiguration(
+            provider: provider,
+            modelID: modelID,
+            apiKey: trimmedCredential,
+            accountID: accountID,
+            baseURL: baseURL
+        )
     }
 
     func storedModelID(for provider: NaviProvider) -> String {
@@ -55,7 +63,20 @@ struct AssistantServiceStore {
 
     private func hasAuthenticatedSession(for provider: NaviProvider) throws -> Bool {
         let storage = try NaviSharedStorage.credentialStorage()
+
+        if provider == .vllm {
+            let baseURL = storedVLLMBaseURL()
+            let hasKey = storage.has(provider.oauthProviderID)
+            return !(baseURL?.isEmpty ?? true) && hasKey
+        }
+
         return storage.has(provider.oauthProviderID)
+    }
+
+    private func storedVLLMBaseURL() -> String? {
+        let defaults = try? NaviSharedStorage.userDefaults()
+        let value = defaults?.string(forKey: NaviSharedStorage.vllmBaseURLKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value?.isEmpty == false ? value : nil
     }
 }
 

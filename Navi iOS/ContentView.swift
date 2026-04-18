@@ -45,8 +45,44 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     StatusBadge(isAuthenticated: auth.isAuthenticated, text: auth.statusMessage)
 
+                    if auth.provider == .vllm {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("vLLM base URL")
+                                .font(.subheadline.weight(.semibold))
+                            TextField("http://127.0.0.1:8000/v1", text: $auth.vllmBaseURL)
+                                .textFieldStyle(.roundedBorder)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+
+                            Text("API key")
+                                .font(.subheadline.weight(.semibold))
+                            SecureField("sk-local-or-your-token", text: $auth.vllmAPIKey)
+                                .textFieldStyle(.roundedBorder)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+
+                            Text("Model ID")
+                                .font(.subheadline.weight(.semibold))
+                            TextField("qwen3.6-35b", text: $auth.vllmModelID)
+                                .textFieldStyle(.roundedBorder)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                        }
+                        .padding(16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                        )
+                    }
+
                     HStack(spacing: 12) {
-                        Button(auth.isAuthenticated ? "Reconnect \(auth.provider.displayName)" : "Sign In with \(auth.provider.displayName)") {
+                        Button(
+                            auth.provider == .vllm
+                                ? "Save vLLM Settings"
+                                : (auth.isAuthenticated
+                                    ? "Reconnect \(auth.provider.displayName)"
+                                    : "Sign In with \(auth.provider.displayName)")
+                        ) {
                             Task { await auth.login() }
                         }
                         .buttonStyle(.borderedProminent)

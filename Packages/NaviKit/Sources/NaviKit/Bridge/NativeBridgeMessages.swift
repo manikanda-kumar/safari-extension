@@ -4,7 +4,7 @@ import Foundation
 
 enum NativeBridgeRequest: Sendable {
     case loadServiceState
-    case startRun(prompt: String, conversation: [NativeConversationMessage])
+    case startRun(prompt: String, conversation: [NativeConversationMessage], mode: BrowserAgentMode)
     case getRun(runID: String)
     case cancelRun(runID: String)
     case submitToolResult(runID: String, callID: String, result: BrowserToolResult)
@@ -35,7 +35,8 @@ enum NativeBridgeRequest: Sendable {
         case "startRun":
             self = try .startRun(
                 prompt: NativeBridgeCodec.requiredString("prompt", in: message),
-                conversation: NativeBridgeCodec.decodeIfPresent([NativeConversationMessage].self, forKey: "conversation", in: message) ?? []
+                conversation: NativeBridgeCodec.decodeIfPresent([NativeConversationMessage].self, forKey: "conversation", in: message) ?? [],
+                mode: NativeBridgeCodec.decodeIfPresent(BrowserAgentMode.self, forKey: "mode", in: message) ?? .assistant
             )
         case "getRun":
             self = try .getRun(runID: NativeBridgeCodec.requiredString("runID", in: message))
@@ -119,8 +120,7 @@ enum NativeBridgeCodec {
             throw NativeBridgeError.invalidRequest("Missing '\(key)' payload.")
         }
 
-        let data = try JSONSerialization.data(withJSONObject: value)
-        return try JSONDecoder().decode(type, from: data)
+        return try decodeAnyValue(type, value: value, key: key)
     }
 
     static func decodeIfPresent<T: Decodable>(_ type: T.Type, forKey key: String, in dictionary: [String: Any]) throws -> T? {
@@ -128,8 +128,27 @@ enum NativeBridgeCodec {
             return nil
         }
 
-        let data = try JSONSerialization.data(withJSONObject: value)
-        return try JSONDecoder().decode(type, from: data)
+        return try decodeAnyValue(type, value: value, key: key)
+    }
+
+    private static func decodeAnyValue<T: Decodable>(_ type: T.Type, value: Any, key: String) throws -> T {
+        if JSONSerialization.isValidJSONObject(value) {
+            let data = try JSONSerialization.data(withJSONObject: value)
+            return try JSONDecoder().decode(type, from: data)
+        }
+
+        let wrapped: [String: Any] = ["value": value]
+        guard JSONSerialization.isValidJSONObject(wrapped) else {
+            throw NativeBridgeError.invalidRequest("Field '\(key)' was not valid JSON.")
+        }
+
+        let data = try JSONSerialization.data(withJSONObject: wrapped)
+        let decoded = try JSONDecoder().decode(DecodeWrapper<T>.self, from: data)
+        return decoded.value
+    }
+
+    private struct DecodeWrapper<T: Decodable>: Decodable {
+        let value: T
     }
 
     static func dictionary(from value: some Encodable) throws -> [String: Any] {

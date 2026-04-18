@@ -23,6 +23,10 @@ import Observation
     public private(set) var codePrompt: String?
     public var codeInput = ""
 
+    public var vllmBaseURL = ""
+    public var vllmAPIKey = ""
+    public var vllmModelID = ""
+
     public var provider: NaviProvider {
         get { _provider }
         set {
@@ -53,11 +57,21 @@ import Observation
                 defaults.set(_provider.defaultModelID, forKey: NaviSharedStorage.modelIDKey)
             }
 
-            isAuthenticated = storage.has(_provider.oauthProviderID)
-            if !isWorking {
-                statusMessage = isAuthenticated
-                    ? "\(_provider.displayName) is connected. Navi can use it in Safari."
-                    : "Sign in with \(_provider.displayName) to enable the Safari extension."
+            if _provider == .vllm {
+                loadVLLMFields(defaults: defaults, storage: storage)
+                isAuthenticated = hasValidVLLMConfiguration(defaults: defaults, storage: storage)
+                if !isWorking {
+                    statusMessage = isAuthenticated
+                        ? "vLLM endpoint is configured. Navi can use your local or self-hosted model in Safari."
+                        : "Configure vLLM base URL, API key, and model to enable the Safari extension."
+                }
+            } else {
+                isAuthenticated = storage.has(_provider.oauthProviderID)
+                if !isWorking {
+                    statusMessage = isAuthenticated
+                        ? "\(_provider.displayName) is connected. Navi can use it in Safari."
+                        : "Sign in with \(_provider.displayName) to enable the Safari extension."
+                }
             }
         } catch {
             isAuthenticated = false
@@ -69,24 +83,36 @@ import Observation
         guard !isWorking else { return }
 
         errorMessage = nil
-        statusMessage = "Preparing \(_provider.displayName) sign-in…"
         isWorking = true
 
         do {
-            try await performOAuthLogin()
-            authorizationURL = nil
-            codePrompt = nil
-            promptContinuation = nil
-            isWorking = false
-            statusMessage = "\(_provider.displayName) is connected. You can use Navi in Safari now."
-            await refreshState()
+            switch _provider {
+            case .vllm:
+                statusMessage = "Saving vLLM settings…"
+                try saveVLLMConfiguration()
+                authorizationURL = nil
+                codePrompt = nil
+                promptContinuation = nil
+                isWorking = false
+                statusMessage = "vLLM endpoint is configured. You can use Navi in Safari now."
+                await refreshState()
+            case .anthropic, .codex:
+                statusMessage = "Preparing \(_provider.displayName) sign-in…"
+                try await performOAuthLogin()
+                authorizationURL = nil
+                codePrompt = nil
+                promptContinuation = nil
+                isWorking = false
+                statusMessage = "\(_provider.displayName) is connected. You can use Navi in Safari now."
+                await refreshState()
+            }
         } catch {
             promptContinuation = nil
             codePrompt = nil
             authorizationURL = nil
             isWorking = false
             errorMessage = error.localizedDescription
-            statusMessage = "\(_provider.displayName) sign-in failed."
+            statusMessage = "\(_provider.displayName) setup failed."
             await refreshState()
         }
     }
@@ -123,7 +149,18 @@ import Observation
     public func logout() async {
         do {
             let storage = try NaviSharedStorage.credentialStorage()
+            let defaults = try NaviSharedStorage.userDefaults()
+
             storage.remove(_provider.oauthProviderID)
+
+            if _provider == .vllm {
+                defaults.removeObject(forKey: NaviSharedStorage.vllmBaseURLKey)
+                defaults.removeObject(forKey: NaviSharedStorage.modelIDKey)
+                vllmBaseURL = ""
+                vllmAPIKey = ""
+                vllmModelID = ""
+            }
+
             errorMessage = nil
             authorizationURL = nil
             codePrompt = nil
@@ -155,7 +192,74 @@ import Observation
             try await performAnthropicLogin()
         case .codex:
             try await performCodexLogin()
+        case .vllm:
+            try saveVLLMConfiguration()
         }
+    }
+
+    private func loadVLLMFields(defaults: UserDefaults, storage: CredentialStorage) {
+        let storedBaseURL = defaults.string(forKey: NaviSharedStorage.vllmBaseURLKey) ?? ""
+        let storedModelID = defaults.string(forKey: NaviSharedStorage.modelIDKey) ?? NaviProvider.vllm.defaultModelID
+        let storedAPIKey = (try? storageHashedKey(storage: storage)) ?? ""
+
+        if vllmBaseURL.isEmpty {
+            vllmBaseURL = storedBaseURL
+        }
+        if vllmModelID.isEmpty {
+            vllmModelID = storedModelID
+        }
+        if vllmAPIKey.isEmpty {
+            vllmAPIKey = storedAPIKey
+        }
+    }
+
+    private func saveVLLMConfiguration() throws {
+        let baseURL = vllmBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let apiKey = vllmAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let modelID = vllmModelID.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !baseURL.isEmpty else {
+            throw AuthError.invalidVLLMConfiguration("Enter a vLLM base URL, for example http://127.0.0.1:8000/v1")
+        }
+
+        guard !modelID.isEmpty else {
+            throw AuthError.invalidVLLMConfiguration("Enter a model ID, for example qwen3.6-35b or gpt-oss-120b")
+        }
+
+        guard !apiKey.isEmpty else {
+            throw AuthError.invalidVLLMConfiguration("Enter an API key for the vLLM endpoint")
+        }
+
+        guard URL(string: baseURL) != nil else {
+            throw AuthError.invalidVLLMConfiguration("The vLLM base URL is not valid")
+        }
+
+        let storage = try NaviSharedStorage.credentialStorage()
+        let defaults = try NaviSharedStorage.userDefaults()
+
+        defaults.set(baseURL, forKey: NaviSharedStorage.vllmBaseURLKey)
+        defaults.set(modelID, forKey: NaviSharedStorage.modelIDKey)
+        storage.set(NaviProvider.vllm.oauthProviderID, accessToken: apiKey, refreshToken: nil, expiresAt: nil)
+
+        vllmBaseURL = baseURL
+        vllmModelID = modelID
+        vllmAPIKey = apiKey
+    }
+
+    private func hasValidVLLMConfiguration(defaults: UserDefaults, storage: CredentialStorage) -> Bool {
+        let baseURL = defaults.string(forKey: NaviSharedStorage.vllmBaseURLKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let modelID = defaults.string(forKey: NaviSharedStorage.modelIDKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let hasKey = storage.has(NaviProvider.vllm.oauthProviderID)
+        return !baseURL.isEmpty && !modelID.isEmpty && hasKey
+    }
+
+    private func storageHashedKey(storage: CredentialStorage) throws -> String {
+        // We reuse access token slot for vLLM API key; surface it back in UI for editing.
+        // Access is read through async API in runtime, but here we only need quick form prefill.
+        if let key = try storage.directValue(for: NaviProvider.vllm.oauthProviderID, field: "access"), !key.isEmpty {
+            return key
+        }
+        return ""
     }
 
     private func performAnthropicLogin() async throws {
@@ -200,11 +304,9 @@ import Observation
         let (authURL, verifier) = try flow.startAuthorization()
         oauthVerifier = verifier
 
-        // Extract state from combined verifier#state
         let parts = verifier.split(separator: "#", maxSplits: 1)
         let expectedState = parts.count > 1 ? String(parts[1]) : nil
 
-        // Start callback server to intercept the redirect
         let callbackServer = OAuthCallbackServer()
         self.callbackServer = callbackServer
 
@@ -212,11 +314,9 @@ import Observation
         statusMessage = "Signing in with Codex…"
         urlOpener(authURL)
 
-        // Also show manual paste as fallback
         codeInput = ""
         codePrompt = "Or paste the redirect URL here if the browser didn't redirect:"
 
-        // Start server — when it receives the code, resume the prompt continuation
         Task {
             if let code = try? await callbackServer.start(expectedState: expectedState) {
                 if let continuation = self.promptContinuation {
@@ -227,14 +327,12 @@ import Observation
             }
         }
 
-        // Wait for either: server callback resumes this, or user manually pastes
         let code = try await withCheckedThrowingContinuation { continuation in
             self.promptContinuation = continuation
         }
         await callbackServer.stop()
         self.callbackServer = nil
 
-        self.callbackServer = nil
         guard let verifier = oauthVerifier else {
             throw AuthError.cancelled
         }
@@ -257,6 +355,7 @@ import Observation
 
 enum AuthError: LocalizedError {
     case cancelled
+    case invalidVLLMConfiguration(String)
 
     // MARK: Internal
 
@@ -264,6 +363,8 @@ enum AuthError: LocalizedError {
         switch self {
         case .cancelled:
             "Sign-in was cancelled."
+        case let .invalidVLLMConfiguration(message):
+            message
         }
     }
 }

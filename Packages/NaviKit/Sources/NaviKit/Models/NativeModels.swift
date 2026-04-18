@@ -121,6 +121,7 @@ public enum JSONValue: Codable, Sendable {
 public enum NaviProvider: String, Codable, Sendable, CaseIterable, Identifiable {
     case codex
     case anthropic
+    case vllm
 
     // MARK: Public
 
@@ -130,6 +131,7 @@ public enum NaviProvider: String, Codable, Sendable, CaseIterable, Identifiable 
         switch self {
         case .anthropic: "Claude"
         case .codex: "Codex"
+        case .vllm: "vLLM"
         }
     }
 
@@ -137,12 +139,27 @@ public enum NaviProvider: String, Codable, Sendable, CaseIterable, Identifiable 
         switch self {
         case .anthropic: "claude-sonnet-4-5"
         case .codex: "gpt-5.4-mini"
+        case .vllm: "qwen3.6-35b"
         }
     }
 
     // MARK: Internal
 
     var oauthProviderID: String { rawValue }
+
+    var requiresOAuth: Bool {
+        switch self {
+        case .anthropic, .codex:
+            true
+        case .vllm:
+            false
+        }
+    }
+}
+
+public enum BrowserAgentMode: String, Codable, Sendable, CaseIterable {
+    case assistant
+    case navigator
 }
 
 // MARK: - AssistantServiceSnapshot

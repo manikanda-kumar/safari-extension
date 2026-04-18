@@ -200,6 +200,7 @@ function ChatWorkspace({ initialState, pageTitle, pageURL, tabId }) {
 
     const serviceOK = Boolean(extensionState?.service?.ok);
     const statusBanner = buildStatusBanner(extensionState);
+    const agentMode = extensionState?.agentMode === "navigator" ? "navigator" : "assistant";
 
     const handleNewThread = async () => {
         const response = await browser.runtime.sendMessage({
@@ -213,6 +214,20 @@ function ChatWorkspace({ initialState, pageTitle, pageURL, tabId }) {
 
         setExtensionState(response.state);
         setThreadSeed((value) => value + 1);
+    };
+
+    const handleSetMode = async (mode) => {
+        const response = await browser.runtime.sendMessage({
+            type: "assistant:setMode",
+            tabId,
+            mode
+        });
+
+        if (!response?.ok) {
+            throw new Error(response?.error ?? "Unable to switch Navi mode.");
+        }
+
+        setExtensionState(response.state);
     };
 
     return (
@@ -239,7 +254,7 @@ function ChatWorkspace({ initialState, pageTitle, pageURL, tabId }) {
                                 <button
                                     onClick={() => {
                                         browser.runtime
-                                            .sendNativeMessage("com.finnvoorhees.Navi", { action: "checkForUpdates" })
+                                            .sendNativeMessage("com.manik.Navi", { action: "checkForUpdates" })
                                             .catch(() => {});
                                     }}
                                     className="rounded-full border border-blue-300/60 bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-900 transition-colors hover:bg-blue-100"
@@ -263,6 +278,37 @@ function ChatWorkspace({ initialState, pageTitle, pageURL, tabId }) {
                                 <PlusBubble className="size-[18px]" />
                             </TooltipIconButton>
                         </div>
+                    </div>
+
+                    <div className="mt-3 inline-flex items-center gap-1 rounded-xl border border-border/70 bg-card/70 p-1">
+                        <button
+                            onClick={() => {
+                                void handleSetMode("assistant").catch((error) => {
+                                    setExtensionState((current) => ({ ...current, error: error.message }));
+                                });
+                            }}
+                            className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                                agentMode === "assistant"
+                                    ? "bg-primary text-primary-foreground"
+                                    : "text-muted-foreground hover:bg-muted"
+                            }`}
+                        >
+                            Assistant
+                        </button>
+                        <button
+                            onClick={() => {
+                                void handleSetMode("navigator").catch((error) => {
+                                    setExtensionState((current) => ({ ...current, error: error.message }));
+                                });
+                            }}
+                            className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                                agentMode === "navigator"
+                                    ? "bg-primary text-primary-foreground"
+                                    : "text-muted-foreground hover:bg-muted"
+                            }`}
+                        >
+                            Navigator
+                        </button>
                     </div>
 
                     {statusBanner ? (
