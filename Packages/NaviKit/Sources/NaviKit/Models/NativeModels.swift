@@ -121,6 +121,7 @@ public enum JSONValue: Codable, Sendable {
 public enum NaviProvider: String, Codable, Sendable, CaseIterable, Identifiable {
     case codex
     case anthropic
+    case bedrock
     case vllm
 
     // MARK: Public
@@ -131,6 +132,7 @@ public enum NaviProvider: String, Codable, Sendable, CaseIterable, Identifiable 
         switch self {
         case .anthropic: "Claude"
         case .codex: "Codex"
+        case .bedrock: "Claude (Bedrock)"
         case .vllm: "vLLM"
         }
     }
@@ -139,6 +141,7 @@ public enum NaviProvider: String, Codable, Sendable, CaseIterable, Identifiable 
         switch self {
         case .anthropic: "claude-sonnet-4-5"
         case .codex: "gpt-5.4-mini"
+        case .bedrock: "anthropic.claude-3-7-sonnet-20250219-v1:0"
         case .vllm: "qwen3.6-35b"
         }
     }
@@ -151,7 +154,7 @@ public enum NaviProvider: String, Codable, Sendable, CaseIterable, Identifiable 
         switch self {
         case .anthropic, .codex:
             true
-        case .vllm:
+        case .bedrock, .vllm:
             false
         }
     }

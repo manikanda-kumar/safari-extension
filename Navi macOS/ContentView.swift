@@ -83,13 +83,49 @@ struct ContentView: View {
                         )
                     }
 
+                    if authController.provider == .bedrock {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("AWS access key ID")
+                                .font(.subheadline.weight(.semibold))
+                            TextField("AKIA...", text: $authController.bedrockAccessKeyID)
+                                .textFieldStyle(.roundedBorder)
+
+                            Text("AWS secret access key")
+                                .font(.subheadline.weight(.semibold))
+                            SecureField("wJalrXUtnFEMI/K7MDENG/bPxRfiCY...", text: $authController.bedrockSecretAccessKey)
+                                .textFieldStyle(.roundedBorder)
+
+                            Text("AWS session token (optional)")
+                                .font(.subheadline.weight(.semibold))
+                            SecureField("IQoJb3JpZ2luX2Vj...", text: $authController.bedrockSessionToken)
+                                .textFieldStyle(.roundedBorder)
+
+                            Text("AWS region")
+                                .font(.subheadline.weight(.semibold))
+                            TextField("us-east-1", text: $authController.bedrockRegion)
+                                .textFieldStyle(.roundedBorder)
+
+                            Text("Bedrock model ID")
+                                .font(.subheadline.weight(.semibold))
+                            TextField("anthropic.claude-3-7-sonnet-20250219-v1:0", text: $authController.bedrockModelID)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        .padding(16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .fill(Color(nsColor: .controlBackgroundColor))
+                        )
+                    }
+
                     HStack(spacing: 12) {
                         Button(
                             authController.provider == .vllm
                                 ? "Save vLLM Settings"
-                                : (authController.isAuthenticated
-                                    ? "Reconnect \(authController.provider.displayName)"
-                                    : "Sign In with \(authController.provider.displayName)")
+                                : authController.provider == .bedrock
+                                    ? "Save Bedrock Settings"
+                                    : (authController.isAuthenticated
+                                        ? "Reconnect \(authController.provider.displayName)"
+                                        : "Sign In with \(authController.provider.displayName)")
                         ) {
                             Task { await authController.login() }
                         }

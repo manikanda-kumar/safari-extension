@@ -75,13 +75,59 @@ struct ContentView: View {
                         )
                     }
 
+                    if auth.provider == .bedrock {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("AWS access key ID")
+                                .font(.subheadline.weight(.semibold))
+                            TextField("AKIA...", text: $auth.bedrockAccessKeyID)
+                                .textFieldStyle(.roundedBorder)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+
+                            Text("AWS secret access key")
+                                .font(.subheadline.weight(.semibold))
+                            SecureField("wJalrXUtnFEMI/K7MDENG/bPxRfiCY...", text: $auth.bedrockSecretAccessKey)
+                                .textFieldStyle(.roundedBorder)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+
+                            Text("AWS session token (optional)")
+                                .font(.subheadline.weight(.semibold))
+                            SecureField("IQoJb3JpZ2luX2Vj...", text: $auth.bedrockSessionToken)
+                                .textFieldStyle(.roundedBorder)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+
+                            Text("AWS region")
+                                .font(.subheadline.weight(.semibold))
+                            TextField("us-east-1", text: $auth.bedrockRegion)
+                                .textFieldStyle(.roundedBorder)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+
+                            Text("Bedrock model ID")
+                                .font(.subheadline.weight(.semibold))
+                            TextField("anthropic.claude-3-7-sonnet-20250219-v1:0", text: $auth.bedrockModelID)
+                                .textFieldStyle(.roundedBorder)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                        }
+                        .padding(16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                        )
+                    }
+
                     HStack(spacing: 12) {
                         Button(
                             auth.provider == .vllm
                                 ? "Save vLLM Settings"
-                                : (auth.isAuthenticated
-                                    ? "Reconnect \(auth.provider.displayName)"
-                                    : "Sign In with \(auth.provider.displayName)")
+                                : auth.provider == .bedrock
+                                    ? "Save Bedrock Settings"
+                                    : (auth.isAuthenticated
+                                        ? "Reconnect \(auth.provider.displayName)"
+                                        : "Sign In with \(auth.provider.displayName)")
                         ) {
                             Task { await auth.login() }
                         }

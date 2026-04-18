@@ -9,6 +9,7 @@ enum NaviSharedStorage {
     static let appGroupID = "AQ5WW4KNGB.group.com.manik.Navi"
     static let modelIDKey = "assistant.model_id"
     static let vllmBaseURLKey = "assistant.vllm.base_url"
+    static let bedrockRegionKey = "assistant.bedrock.region"
     static let defaultProvider = NaviProvider.anthropic
 
     static func selectedProvider() -> NaviProvider {

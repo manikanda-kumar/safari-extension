@@ -64,6 +64,14 @@ actor BrowserAgentCoordinator {
             CodexProvider(apiKey: configuration.apiKey, accountID: configuration.accountID ?? "")
         case .anthropic:
             ClaudeProvider(apiKey: configuration.apiKey)
+        case .bedrock:
+            BedrockProvider(
+                accessKeyID: configuration.apiKey,
+                secretAccessKey: configuration.bedrockSecretKey ?? "",
+                sessionToken: configuration.bedrockSessionToken,
+                region: configuration.bedrockRegion ?? "us-east-1",
+                modelID: configuration.modelID
+            )
         case .vllm:
             VLLMProvider(apiKey: configuration.apiKey, baseURL: configuration.baseURL ?? "http://127.0.0.1:8000/v1")
         }

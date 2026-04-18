@@ -27,6 +27,12 @@ import Observation
     public var vllmAPIKey = ""
     public var vllmModelID = ""
 
+    public var bedrockAccessKeyID = ""
+    public var bedrockSecretAccessKey = ""
+    public var bedrockSessionToken = ""
+    public var bedrockRegion = ""
+    public var bedrockModelID = ""
+
     public var provider: NaviProvider {
         get { _provider }
         set {
@@ -57,7 +63,8 @@ import Observation
                 defaults.set(_provider.defaultModelID, forKey: NaviSharedStorage.modelIDKey)
             }
 
-            if _provider == .vllm {
+            switch _provider {
+            case .vllm:
                 loadVLLMFields(defaults: defaults, storage: storage)
                 isAuthenticated = hasValidVLLMConfiguration(defaults: defaults, storage: storage)
                 if !isWorking {
@@ -65,7 +72,17 @@ import Observation
                         ? "vLLM endpoint is configured. Navi can use your local or self-hosted model in Safari."
                         : "Configure vLLM base URL, API key, and model to enable the Safari extension."
                 }
-            } else {
+
+            case .bedrock:
+                loadBedrockFields(defaults: defaults, storage: storage)
+                isAuthenticated = hasValidBedrockConfiguration(defaults: defaults, storage: storage)
+                if !isWorking {
+                    statusMessage = isAuthenticated
+                        ? "Bedrock is configured. Navi can use Claude via AWS Bedrock in Safari."
+                        : "Configure AWS credentials, region, and model to enable Bedrock in Safari."
+                }
+
+            case .anthropic, .codex:
                 isAuthenticated = storage.has(_provider.oauthProviderID)
                 if !isWorking {
                     statusMessage = isAuthenticated
@@ -96,6 +113,17 @@ import Observation
                 isWorking = false
                 statusMessage = "vLLM endpoint is configured. You can use Navi in Safari now."
                 await refreshState()
+
+            case .bedrock:
+                statusMessage = "Saving Bedrock settings…"
+                try saveBedrockConfiguration()
+                authorizationURL = nil
+                codePrompt = nil
+                promptContinuation = nil
+                isWorking = false
+                statusMessage = "Bedrock is configured. You can use Navi in Safari now."
+                await refreshState()
+
             case .anthropic, .codex:
                 statusMessage = "Preparing \(_provider.displayName) sign-in…"
                 try await performOAuthLogin()
@@ -161,6 +189,18 @@ import Observation
                 vllmModelID = ""
             }
 
+            if _provider == .bedrock {
+                defaults.removeObject(forKey: NaviSharedStorage.bedrockRegionKey)
+                defaults.removeObject(forKey: NaviSharedStorage.modelIDKey)
+                storage.removeExtra(_provider.oauthProviderID, key: "secretKey")
+                storage.removeExtra(_provider.oauthProviderID, key: "sessionToken")
+                bedrockAccessKeyID = ""
+                bedrockSecretAccessKey = ""
+                bedrockSessionToken = ""
+                bedrockRegion = ""
+                bedrockModelID = ""
+            }
+
             errorMessage = nil
             authorizationURL = nil
             codePrompt = nil
@@ -194,6 +234,8 @@ import Observation
             try await performCodexLogin()
         case .vllm:
             try saveVLLMConfiguration()
+        case .bedrock:
+            try saveBedrockConfiguration()
         }
     }
 
@@ -260,6 +302,83 @@ import Observation
             return key
         }
         return ""
+    }
+
+    private func loadBedrockFields(defaults: UserDefaults, storage: CredentialStorage) {
+        let storedRegion = defaults.string(forKey: NaviSharedStorage.bedrockRegionKey) ?? ""
+        let storedModelID = defaults.string(forKey: NaviSharedStorage.modelIDKey) ?? NaviProvider.bedrock.defaultModelID
+        let storedAccessKeyID = (try? storage.directValue(for: NaviProvider.bedrock.oauthProviderID, field: "access")) ?? ""
+        let storedSecretKey = storage.getExtra(NaviProvider.bedrock.oauthProviderID, key: "secretKey") ?? ""
+        let storedSessionToken = storage.getExtra(NaviProvider.bedrock.oauthProviderID, key: "sessionToken") ?? ""
+
+        if bedrockAccessKeyID.isEmpty {
+            bedrockAccessKeyID = storedAccessKeyID
+        }
+        if bedrockSecretAccessKey.isEmpty {
+            bedrockSecretAccessKey = storedSecretKey
+        }
+        if bedrockSessionToken.isEmpty {
+            bedrockSessionToken = storedSessionToken
+        }
+        if bedrockRegion.isEmpty {
+            bedrockRegion = storedRegion
+        }
+        if bedrockModelID.isEmpty {
+            bedrockModelID = storedModelID
+        }
+    }
+
+    private func saveBedrockConfiguration() throws {
+        let accessKeyID = bedrockAccessKeyID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let secretAccessKey = bedrockSecretAccessKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sessionToken = bedrockSessionToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let region = bedrockRegion.trimmingCharacters(in: .whitespacesAndNewlines)
+        let modelID = bedrockModelID.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !accessKeyID.isEmpty else {
+            throw AuthError.invalidBedrockConfiguration("Enter your AWS access key ID")
+        }
+
+        guard !secretAccessKey.isEmpty else {
+            throw AuthError.invalidBedrockConfiguration("Enter your AWS secret access key")
+        }
+
+        guard !region.isEmpty else {
+            throw AuthError.invalidBedrockConfiguration("Enter AWS region, for example us-east-1")
+        }
+
+        guard !modelID.isEmpty else {
+            throw AuthError.invalidBedrockConfiguration("Enter a Bedrock model ID, for example anthropic.claude-3-7-sonnet-20250219-v1:0")
+        }
+
+        let storage = try NaviSharedStorage.credentialStorage()
+        let defaults = try NaviSharedStorage.userDefaults()
+
+        defaults.set(region, forKey: NaviSharedStorage.bedrockRegionKey)
+        defaults.set(modelID, forKey: NaviSharedStorage.modelIDKey)
+
+        storage.set(NaviProvider.bedrock.oauthProviderID, accessToken: accessKeyID, refreshToken: nil, expiresAt: nil)
+        storage.setExtra(NaviProvider.bedrock.oauthProviderID, key: "secretKey", value: secretAccessKey)
+        if sessionToken.isEmpty {
+            storage.removeExtra(NaviProvider.bedrock.oauthProviderID, key: "sessionToken")
+        } else {
+            storage.setExtra(NaviProvider.bedrock.oauthProviderID, key: "sessionToken", value: sessionToken)
+        }
+
+        bedrockAccessKeyID = accessKeyID
+        bedrockSecretAccessKey = secretAccessKey
+        bedrockSessionToken = sessionToken
+        bedrockRegion = region
+        bedrockModelID = modelID
+    }
+
+    private func hasValidBedrockConfiguration(defaults: UserDefaults, storage: CredentialStorage) -> Bool {
+        let region = defaults.string(forKey: NaviSharedStorage.bedrockRegionKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let modelID = defaults.string(forKey: NaviSharedStorage.modelIDKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let accessKeyID = (try? storage.directValue(for: NaviProvider.bedrock.oauthProviderID, field: "access"))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let secret = storage.getExtra(NaviProvider.bedrock.oauthProviderID, key: "secretKey")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        return !accessKeyID.isEmpty && !secret.isEmpty && !region.isEmpty && !modelID.isEmpty
     }
 
     private func performAnthropicLogin() async throws {
@@ -356,6 +475,7 @@ import Observation
 enum AuthError: LocalizedError {
     case cancelled
     case invalidVLLMConfiguration(String)
+    case invalidBedrockConfiguration(String)
 
     // MARK: Internal
 
@@ -364,6 +484,8 @@ enum AuthError: LocalizedError {
         case .cancelled:
             "Sign-in was cancelled."
         case let .invalidVLLMConfiguration(message):
+            message
+        case let .invalidBedrockConfiguration(message):
             message
         }
     }

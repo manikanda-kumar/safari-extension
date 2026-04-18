@@ -20,7 +20,7 @@ struct CredentialStorage {
         guard let accessToken = try? valet.string(forKey: key(provider, "access")),
               !accessToken.isEmpty else { return nil }
 
-        if provider == NaviProvider.vllm.oauthProviderID {
+        if provider == NaviProvider.vllm.oauthProviderID || provider == NaviProvider.bedrock.oauthProviderID {
             return accessToken
         }
 
@@ -54,6 +54,10 @@ struct CredentialStorage {
 
     func setExtra(_ provider: String, key extraKey: String, value: String) {
         try? valet.setString(value, forKey: key(provider, extraKey))
+    }
+
+    func removeExtra(_ provider: String, key extraKey: String) {
+        try? valet.removeObject(forKey: key(provider, extraKey))
     }
 
     func set(_ provider: String, accessToken: String, refreshToken: String?, expiresAt: Double?) {
